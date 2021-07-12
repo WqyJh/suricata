@@ -178,6 +178,21 @@
 
 #include "rust.h"
 
+
+#ifdef HAVE_DPDK
+#include "source-dpdk.h"
+
+#ifndef SUIRCATA_DPDK_MAXARGS
+#define SUIRCATA_DPDK_MAXARGS 32
+#endif
+
+extern uint16_t argument_count;
+extern char dpdkArgument[SUIRCATA_DPDK_MAXARGS][128];
+
+char *args[SUIRCATA_DPDK_MAXARGS];
+#endif
+
+
 /*
  * we put this here, because we only use it here in main.
  */
@@ -617,6 +632,10 @@ static void PrintUsage(const char *progname)
     printf("\t--pfring-cluster-id <id>             : pfring cluster id \n");
     printf("\t--pfring-cluster-type <type>         : pfring cluster type for PF_RING 4.1.2 and later cluster_round_robin|cluster_flow\n");
 #endif /* HAVE_PFRING */
+#ifdef HAVE_DPDK
+    printf("\t--dpdk                      : run with DPDK mode with user config\n");
+    printf("\t--list-dpdkports                     : list DPDK availble ports\n");
+#endif /* HAVE_DPDK */
     printf("\t--simulate-ips                       : force engine into IPS mode. Useful for QA\n");
 #ifdef HAVE_LIBCAP_NG
     printf("\t--user <user>                        : run suricata as this user after init\n");
@@ -873,6 +892,11 @@ void RegisterAllModules(void)
     /* pfring */
     TmModuleReceivePfringRegister();
     TmModuleDecodePfringRegister();
+#ifdef HAVE_DPDK
+    /* DPDK */
+    TmModuleReceiveDpdkRegister();
+    TmModuleDecodeDpdkRegister();
+#endif
     /* dag file */
     TmModuleReceiveErfFileRegister();
     TmModuleDecodeErfFileRegister();
@@ -943,6 +967,26 @@ static TmEcode ParseInterfacesList(const int runmode, char *pcap_dev)
             /* not an error condition if we have a 1.0 config */
             LiveBuildDeviceList("pfring");
         }
+#ifdef HAVE_DPDK
+    } else if (runmode == RUNMODE_DPDK) {
+        /* init DPDK instance */
+        for (int j = 0; j < argument_count; j++) {
+           SCLogDebug(" args-%3d: %s", j + 1, dpdkArgument[j]);
+           args[j] = dpdkArgument[j];
+        }
+
+        if (InitDpdkSuricata(argument_count, (char **)args)) {
+            /* Identify the ports with DPDK */
+            if (GetDpdkPort() == 0) {
+                SCLogError(SC_ERR_DPDK_CONFIG, " No DPDK ports found");
+                SCReturnInt(TM_ECODE_FAILED);
+            } else
+                SCLogInfo(" Found DPDK ports");
+        } else {
+            SCLogError(SC_ERR_DPDK_CONFIG, " failed to initialize DPDK");
+            SCReturnInt(TM_ECODE_FAILED);
+        }
+#endif
 #ifdef HAVE_AF_PACKET
     } else if (runmode == RUNMODE_AFP_DEV) {
         /* iface has been set on command line */
@@ -1190,6 +1234,10 @@ static TmEcode ParseCommandLine(int argc, char** argv, SCInstance *suri)
     g_ut_covered = 0;
 #endif
 
+#ifdef HAVE_DPDK
+    int list_dpdk_ports = 0;
+#endif
+
     struct option long_opts[] = {
         {"dump-config", 0, &dump_config, 1},
         {"dump-features", 0, &dump_features, 1},
@@ -1238,6 +1286,10 @@ static TmEcode ParseCommandLine(int argc, char** argv, SCInstance *suri)
         {"napatech", 0, 0, 0},
         {"build-info", 0, &build_info, 1},
         {"data-dir", required_argument, 0, 0},
+#ifdef HAVE_DPDK
+        {"dpdk", 0, 0, 0},
+        {"list-dpdkports", 0, &list_dpdk_ports, 1},
+#endif
 #ifdef WINDIVERT
         {"windivert", required_argument, 0, 0},
         {"windivert-forward", required_argument, 0, 0},
@@ -1300,6 +1352,24 @@ static TmEcode ParseCommandLine(int argc, char** argv, SCInstance *suri)
                         "to pass --enable-pfring to configure when building.");
                 return TM_ECODE_FAILED;
 #endif /* HAVE_PFRING */
+            }
+            else if(strcmp((long_opts[option_index]).name, "dpdk") == 0) {
+#ifdef HAVE_DPDK
+                if (suri->run_mode == RUNMODE_UNKNOWN) {
+                    suri->run_mode = RUNMODE_DPDK;
+                    SCLogNotice(" DPDK Mode selected");
+
+                    memset(suri->pcap_dev, 0, sizeof(suri->pcap_dev));
+                } else {
+                    SCLogError(SC_ERR_MULTIPLE_RUN_MODE,
+                               "more than one run mode has been specified");
+                    PrintUsage(argv[0]);
+                    exit(EXIT_FAILURE);
+                }
+#else
+                SCLogError(SC_ERR_INITIALIZATION, "DPDK not enabled. pass --enable-dpdk to configure");
+                return TM_ECODE_FAILED;
+#endif
             }
             else if (strcmp((long_opts[option_index]).name , "capture-plugin") == 0){
                 suri->run_mode = RUNMODE_PLUGIN;
@@ -1874,6 +1944,10 @@ static TmEcode ParseCommandLine(int argc, char** argv, SCInstance *suri)
         suri->run_mode = RUNMODE_CONF_TEST;
     if (engine_analysis)
         suri->run_mode = RUNMODE_ENGINE_ANALYSIS;
+#ifdef HAVE_DPDK
+    if (list_dpdk_ports)
+        suri->run_mode = RUNMODE_DPDK_LISTPORTS;
+#endif
 
     suri->offline = IsRunModeOffline(suri->run_mode);
     g_system = suri->system = IsRunModeSystem(suri->run_mode);
@@ -2154,6 +2228,15 @@ static int StartInternalRunMode(SCInstance *suri, int argc, char **argv)
             SCLogInfo("Suricata service startup parameters has been successfuly changed.");
             return TM_ECODE_DONE;
 #endif /* OS_WIN32 */
+#ifdef HAVE_DPDK
+        case RUNMODE_DPDK_LISTPORTS:
+            args[0] = dpdkArgument[0];
+            if (InitDpdkSuricata(1, args) >= 0)
+                ListDpdkPorts();
+            else
+                SCLogError(SC_ERR_DPDK_CONFIG, " DPDK init failed");
+            return TM_ECODE_DONE;
+#endif
         default:
             /* simply continue for other running mode */
             break;
@@ -2771,6 +2854,15 @@ int SuricataMain(int argc, char **argv)
         exit(EXIT_SUCCESS);
     }
 
+#ifdef HAVE_DPDK
+    if (suricata.run_mode == RUNMODE_DPDK) {
+        if (ParseDpdkYaml()) {
+            SCLogError(SC_ERR_DPDK_CONFIG, " Failed to read content DPDK!");
+            exit(EXIT_FAILURE);
+        }
+    }
+#endif
+
     int vlan_tracking = 1;
     if (ConfGetBool("vlan.use-for-tracking", &vlan_tracking) == 1 && !vlan_tracking) {
         /* Ignore vlan_ids when comparing flows. */
@@ -2795,6 +2887,22 @@ int SuricataMain(int argc, char **argv)
         exit(EXIT_FAILURE);
     }
 
+#ifdef HAVE_DPDK
+    if (suricata.run_mode == RUNMODE_DPDK) {
+        SCLogDebug(" Check for ACL offlaod for DPDK RX-TX.");
+        if (CreateDpdkAcl()) {
+            SCLogError(SC_ERR_DPDK_CONFIG, " Failed to create ACL DPDK!");
+            exit(EXIT_FAILURE);
+        }
+
+        SCLogDebug(" Check for reassembly-fragemnt offlaod for DPDK.");
+        if (CreateDpdkReassemblyFragement()) {
+            SCLogError(SC_ERR_DPDK_CONFIG, " Failed to create ReassemblyFragement DPDK!");
+            exit(EXIT_FAILURE);
+        }
+    }
+#endif
+
     SCDropMainThreadCaps(suricata.userid, suricata.groupid);
 
     /* Re-enable coredumps after privileges are dropped. */
@@ -2812,6 +2920,25 @@ int SuricataMain(int argc, char **argv)
         FeatureDump();
         goto out;
     }
+
+#ifdef HAVE_DPDK
+    if (suricata.run_mode == RUNMODE_DPDK) {
+        SCLogDebug(" Validate user configuration!");
+        SCLogDebug(" Init ports per config!");
+        if (ValidateDpdkConfig() != 0) {
+            SCLogError(SC_ERR_DPDK_CONFIG, " Failed to set config!");
+            exit(EXIT_FAILURE);
+        }
+
+        SCLogDebug(" run mode %u is ips %u is ids %u ", GetRunMode(), EngineModeIsIPS(), EngineModeIsIDS());
+        if (GetRunMode() == 1)
+            EngineModeSetIDS();
+        else if (GetRunMode() == 2)
+            EngineModeSetIPS();
+
+        SCLogInfo(" kick start DPDK RX-TX threads");
+    }
+#endif
 
     SCSetStartTime(&suricata);
     RunModeDispatch(suricata.run_mode, suricata.runmode_custom_mode,
@@ -2844,6 +2971,12 @@ int SuricataMain(int argc, char **argv)
     PostRunDeinit(suricata.run_mode, &suricata.start_time);
     /* kill remaining threads */
     TmThreadKillThreads();
+
+#ifdef HAVE_DPDK
+    if (suricata.run_mode == RUNMODE_DPDK) {
+        KillDpdkSuricata;
+    }
+#endif
 
 out:
     GlobalsDestroy(&suricata);

@@ -72,6 +72,9 @@ enum PktSrcEnum {
 #ifdef HAVE_PF_RING_FLOW_OFFLOAD
 #include "source-pfring.h"
 #endif
+#ifdef HAVE_DPDK
+#include "source-dpdk.h"
+#endif
 
 #include "action-globals.h"
 
@@ -479,6 +482,9 @@ typedef struct Packet_
         PfringPacketVars pfring_v;
 #endif
 #endif
+#ifdef HAVE_DPDK
+        DpdkPacketVars dpdk_v;
+#endif /* dpdk mbuf */
 #ifdef WINDIVERT
         WinDivertPacketVars windivert_v;
 #endif /* WINDIVERT */

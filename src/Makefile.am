@@ -420,6 +420,7 @@ runmode-nflog.c runmode-nflog.h \
 runmode-pcap.c runmode-pcap.h \
 runmode-pcap-file.c runmode-pcap-file.h \
 runmode-pfring.c runmode-pfring.h \
+runmode-dpdk.c runmode-dpdk.h \
 runmode-unittests.c runmode-unittests.h \
 runmode-unix-socket.c runmode-unix-socket.h \
 runmode-windivert.c runmode-windivert.h \
@@ -439,6 +440,7 @@ source-pcap-file.c source-pcap-file.h \
 source-pcap-file-directory-helper.c source-pcap-file-directory-helper.h \
 source-pcap-file-helper.c source-pcap-file-helper.h \
 source-pfring.c source-pfring.h \
+source-dpdk.c source-dpdk.h \
 source-windivert.c source-windivert.h \
 stream.c stream.h \
 stream-tcp.c stream-tcp.h stream-tcp-private.h \

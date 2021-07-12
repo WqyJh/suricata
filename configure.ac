@@ -1408,6 +1408,36 @@
     fi
     LIBS="${TMPLIBS}"
 
+  # libdpdk
+    # DPDK support is checked by `--enable_dpdk`
+    AC_ARG_ENABLE(dpdk,
+           AS_HELP_STRING([--enable-dpdk], [Enable DPDK support [default=no]]),
+                        ,[enable_dpdk=no])
+
+    AS_IF([test "x$enable_dpdk" = "xyes"], [
+        enable_af_packet="no"
+
+        AC_DEFINE([HAVE_DPDK],[1],(DPDK support enabled))
+
+        PKG_CHECK_MODULES(DPDK, libdpdk)
+        CPPFLAGS="${CPPFLAGS} ${DPDK_CFLAGS} -DHAVE_STRLCPY -DHAVE_STRLCAT"
+        LDFLAGS="${LDFLAGS} ${DPDK_LIBS}"
+
+        # if test -f /usr/local/include/rte_eal.h; then
+        #     DPDK_CFLAGS="-include rte_config.h -march=native -I/usr/local/include"
+        #     AC_SUBST(DPDK_CFLAGS)
+        #     echo " Added configuration for DPDK CFLAGS"
+
+        #     DPDK_LDFLAGS="-L/usr/local/lib/x86_64-linux-gnu -Wl,--as-needed -lrte_node -lrte_graph -lrte_bpf -lrte_flow_classify -lrte_pipeline -lrte_table -lrte_port -lrte_fib -lrte_ipsec -lrte_vhost -lrte_stack -lrte_security -lrte_sched -lrte_reorder -lrte_rib -lrte_regexdev -lrte_rawdev -lrte_pdump -lrte_power -lrte_member -lrte_lpm -lrte_latencystats -lrte_kni -lrte_jobstats -lrte_ip_frag -lrte_gso -lrte_gro -lrte_eventdev -lrte_efd -lrte_distributor -lrte_cryptodev -lrte_compressdev -lrte_cfgfile -lrte_bitratestats -lrte_bbdev -lrte_acl -lrte_timer -lrte_hash -lrte_metrics -lrte_cmdline -lrte_pci -lrte_ethdev -lrte_meter -lrte_net -lrte_mbuf -lrte_mempool -lrte_rcu -lrte_ring -lrte_eal -lrte_telemetry -lrte_kvargs"
+        #     echo " Added configuration for DPDK LDFLAGS"
+        #     AC_SUBST(DPDK_LDFLAGS)
+        # fi
+
+        echo " Added configuration for DPDK"
+        echo ""
+    ])
+    AM_CONDITIONAL([BUILD_DPDK], [test "x$enable_dpdk" = "xyes"])
+
   # libpfring
     # libpfring (currently only supported for libpcap enabled pfring)
     # Error on the side of caution. If libpfring enabled pcap is being used and we don't link against -lpfring compilation will fail.

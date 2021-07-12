@@ -49,6 +49,7 @@
 #include "log-httplog.h"
 
 #include "source-pfring.h"
+#include "source-dpdk.h"
 
 #include "tmqh-flow.h"
 #include "flow-manager.h"
@@ -125,6 +126,8 @@ static const char *RunModeTranslateModeToName(int runmode)
 #else
             return "PFRING(DISABLED)";
 #endif
+        case RUNMODE_DPDK:
+            return "DPDK";
         case RUNMODE_PLUGIN:
             return "PLUGIN";
         case RUNMODE_NFQ:
@@ -218,6 +221,7 @@ void RunModeRegisterRunModes(void)
     RunModeIdsPcapRegister();
     RunModeFilePcapRegister();
     RunModeIdsPfringRegister();
+    RunModeDpdkRegister();
     RunModeIpsNFQRegister();
     RunModeIpsIPFWRegister();
     RunModeErfFileRegister();
@@ -307,6 +311,9 @@ void RunModeDispatch(int runmode, const char *custom_mode,
                 custom_mode = RunModeIdsPfringGetDefaultMode();
                 break;
 #endif
+            case RUNMODE_DPDK:
+                custom_mode = RunModeDpdkGetDefaultMode();
+                break;
             case RUNMODE_PLUGIN: {
 #ifdef HAVE_PLUGINS
                 SCCapturePlugin *plugin = SCPluginFindCaptureByName(capture_plugin_name);
